@@ -1,0 +1,39 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+
+\title{FDI}
+\author{md403}
+\date{October 2018}
+
+\begin{document}
+
+\section{Power Flow}
+
+\section{State Estimation}
+
+State estimation attempts to solve for system state variables using meter measurements and the known network topology and design.  \\
+
+Equation \eqref{eqn:ac_state}, shows the relationship between the state variables and the meter measurements.
+
+\begin{equation}\label{eqn:ac_state}
+    \mathbf{z = h(x) + e}
+\end{equation}
+
+where $\mathbf{x}$ is the column vector of $n$ state variables $\mathbf{x} = (x_1, \ldots, x_n)^\top$,
+$\mathbf{z}$ is the column vector of $m$ meter measurements $\mathbf{z} = (z_1, \ldots, z_m)^\top$,
+$\mathbf{h(x)}$ encodes the network topology in the array of partial differential equations $\mathbf{h(x)} = (h_1(x_1, \ldots, x_n), \ldots, h_m(x_1, \ldots, x_n))$, and
+$\mathbf{e}$ is the column vector of $m$ meter errors $\mathbf{e} = (e_1, \ldots, e_m)^\top$.
+
+The goal of state estimation is to use the known network topology to calculate the system state variables, $\hat{x}$ which best fit the known meter measurements, $z$. \\
+
+For a system using AC power flow, $\hat{x}$ is calculated iteratively using equation \eqref{eqn:ac_state}; however, for a system using DC power flow, $\mathbf{h(x)}$ is an array of linear equations, so equation \eqref{eqn:ac_state} can be simplified into the following linear regression model:
+
+\begin{equation}\label{eqn:dc_state}
+    \mathbf{z = Hx + e}
+\end{equation}
+
+where $\mathbf{z}$, $\mathbf{x}$, and $\mathbf{e}$ are the same as equation \eqref{eqn:ac_state}, and
+$\mathbf{H}$ is an $m$ by $n$ matrix of elements $h_{ij}$ for $i = 1, \ldots, m$ and $j = 1, \ldots, n$.
+
+\end{document}
