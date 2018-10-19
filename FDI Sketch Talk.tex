@@ -12,7 +12,9 @@
 
 \section{State Estimation}
 
-State estimation attempts to solve for system state variables using meter measurements and the known network topology and design.  \\
+Solving system power flow requires knowledge of the system topology and state.  Topology consists of the buses, branches, line impedances, power injection points, and load points.  The topology should be known by design.  For the AC power flow problem, the state includes voltage magnitudes and phase angles at each bus (i.e., $\mathbf{x} = (\theta_1, \ldots, \theta_n, |V|_1, \ldots, |V|_n)$.  For the DC power flow problem, only the phase angles are necessary, as the effect of reactive power on the voltage magnitude is considered negligible.  The state has to be inferred or estimated from measurements taken throughout the system.  Measurements include real and reactive power, voltage, and current.
+
+State estimation attempts to solve for system state variables using meter measurements and the known network topology and design.
 
 Equation \eqref{eqn:ac_state}, shows the relationship between the state variables and the meter measurements.
 
@@ -25,7 +27,7 @@ $\mathbf{z}$ is the column vector of $m$ meter measurements $\mathbf{z} = (z_1, 
 $\mathbf{h(x)}$ encodes the network topology in the array of partial differential equations $\mathbf{h(x)} = (h_1(x_1, \ldots, x_n), \ldots, h_m(x_1, \ldots, x_n))$, and
 $\mathbf{e}$ is the column vector of $m$ meter errors $\mathbf{e} = (e_1, \ldots, e_m)^\top$.
 
-The goal of state estimation is to use the known network topology to calculate the system state variables, $\hat{x}$ which best fit the known meter measurements, $z$. \\
+The goal of state estimation is to use the known network topology to estimate the system state variables, $\hat{x}$ which best fit the known meter measurements, $z$.
 
 For a system using AC power flow, $\hat{x}$ is calculated iteratively using equation \eqref{eqn:ac_state}; however, for a system using DC power flow, $\mathbf{h(x)}$ is an array of linear equations, so equation \eqref{eqn:ac_state} can be simplified into the following linear regression model:
 
@@ -33,7 +35,89 @@ For a system using AC power flow, $\hat{x}$ is calculated iteratively using equa
     \mathbf{z = Hx + e}
 \end{equation}
 
-where $\mathbf{z}$, $\mathbf{x}$, and $\mathbf{e}$ are the same as equation \eqref{eqn:ac_state}, and
-$\mathbf{H}$ is an $m$ by $n$ matrix of elements $h_{ij}$ for $i = 1, \ldots, m$ and $j = 1, \ldots, n$.
+where $\mathbf{H}$ is an $m$ by $n$ matrix of elements $h_{ij}$ for $i = 1, \ldots, m$ and $j = 1, \ldots, n$.
+
+Given equation \eqref{eqn:dc_state}, various statistical estimation methods can be used to compute $\mathbf{\hat{x}}$.  Provided the measurement error terms in $\mathbf{e}$ are normally distributed with zero mean, the most common statistical estimation methods (maximum likelihood, weighted least-square, and minimum variance) result in the same matrix solution:
+
+\begin{equation}\label{eqn:x_hat_calc}
+    \mathbf{\hat{x} = (H^\top W H)^{-1} H^\top W z}
+\end{equation}
+
+where $\mathbf{W}$ is an $m$ by $m$ diagonal matrix of the inverse meter variances (i.e., $h_{ii} = \sigma^{-2}_{i}$ for $i = 1, \ldots, m$, where $\sigma^2_i$ is the variance of the $i$-th meter).
+
+Given $\mathbf{\hat{x}}$, the system power flow can be solved.
+
+\section{Bad Data Detection}
+
+Measurements are obtained via meters which transmit data back to the controlling centre via a SCADA network.  The meter readings can be asynchronous, noisy, faulty, or absent altogether.  To avoid gross errors in state estimation (and subsequent power flow calculations), various methods are used to detect bad data.  The simplest method is comparing the norm of the measurement residual, $\left\Vert \mathbf{z-H\hat{x}} \right\Vert$, against a threshold $\tau$.  If $\left\Vert \mathbf{z-H\hat{x}} \right\Vert \geq \tau$ then one or more measurements is suspect.  Other algorithms are used to identify and remove the suspect measurement(s) before performing state estimation.  
+
+\section{False Data Injection}
+
+The goal of the false data injection (FDI) attack is to manipulate the estimated state variables, $\mathbf{\hat{x}}$, by manipulating a subset of meter measurements in $\mathbf{z}$ such that the norm of the measurement residual remains below the threshold (i.e., $\left\Vert \mathbf{z-H\hat{x}} \right\Vert < \tau$.
+
+When FDI was introduced by Liu \textit{et al}. in (reference), they showed that adding any linear combination of the column vectors in $\mathbf{H}$ to the measurement vector $\mathbf{z}$ would have no effect on the measurement residual; therefore, the manipulated measurement vector would pass the bad data detection test if the original measurement vector passed.
+
+\begin{equation} \label{eqn:attack_vector}
+    \mathbf{a = Hc}
+\end{equation}
+
+where $\mathbf{a} = (a_1, \ldots, a_m)$ is the attack vector,
+and $\mathbf{c} = (c_1, \ldots, c_n)$ defines a linear combination of column vectors in $\mathbf{H}$.  
+
+Using equation \eqref{eqn:attack_vector} to construct an attack vector, $\mathbf{z_a=z+a}$ results in $\mathbf{\hat{x}_{bad} = \hat{x} + c}$ per equation \eqref{eqn:x_hat_calc}, demonstrating that the column vector $\mathbf{c}$ also defines the changes to the estimated state, $\mathbf{\hat{x}}$, which results from the attack.
+
+Equation \eqref{eqn:resid_pass} demonstrates that an attack vector constructed using equation \eqref{eqn:attack_vector} will have no effect on the measurement residual and, therefore, the bad data detection test.
+
+\begin{align} \label{eqn:resid_pass}
+    \left\Vert \mathbf{z_a-H\hat{x}_{bad}} \right\Vert & = \left\Vert \mathbf{z_a-H\hat{x}_{bad}} \right\Vert \nonumber \\
+    & = \left\Vert \mathbf{(z+a)-H(\hat{x}+c)} \right\Vert \nonumber \\
+    & = \left\Vert \mathbf{z+a-H\hat{x}-Hc)} \right\Vert \nonumber \\
+    & = \left\Vert \mathbf{z-H\hat{x}+a-Hc} \right\Vert \nonumber \\
+    & = \left\Vert \mathbf{z-H\hat{x}} \right\Vert
+\end{align}
+
+Liu \textit{et al}. developed several algorithms for constructing $\mathbf{a}$ under the following scenarios:
+\begin{enumerate}
+    \item Limited access to meters (scenario 1):  The attacker attempts to manipulate specific state variables, but only has access to $k$ specific meters, where $k<m$; therefore, $m-k$ elements of $\mathbf{a}$ will be $0$.  In this scenario, the authors considered a constrained situation where \textit{only} the targeted state variables can change (i.e., if the control center has another method to verify other state variables) and an unconstrained situation where collateral changes to untargeted state variables was acceptable.
+    \item Limited resources (scenario 2):  The attacker attempts to manipulate specific state variables, and can access any meter, but only has the resources to compromise $k$ meters.  Similar to the first scenario, the authors considered both a constrained and unconstrained case.
+\end{enumerate}
+
+Not all scenarios resulted in successful generation of attack vectors.  The constrained cases are the easiest to calculate, but the most restrictive, as the attack vector $\mathbf{a}$ can simply be calculated using equation \eqref{eqn:attack_vector} by assigning values to the elements of column vector $\mathbf{c}$ corresponding to desired changes to $\mathbf{\hat{x}}$ and assigning $0$ to remaining elements of $\mathbf{c}$; however, this results in a single, possible attack vector, defining the required measurement manipulations.  If the measurements requiring manipulation are not within the attacker's control (scenario 1), or if the number of measurements requiring manipulation exceed the attacker's resources (scenario 2), the attack is impossible.  The unconstrained case is harder to calculate, requiring either a brute force search or Gaussian elimination to construct an attack vector meeting the scenario constraints, but is more likely to succeed in constructing an attack vector.
+
+The method in Liu \textit{et al}. has two significant limitations:
+\begin{enumerate}
+    \item The attacker must know $\mathbf{H}$.  Liu \textit{et al}. postulate that the attacker would compromise a network associated with the control center to obtain $\mathbf{H}$, and acknowledge that this presents a high bar for the attacker.  This also begs the question:  if the attacker has already compromised the control center's network, why bother with the effort of finding and compromising meters spread over a wide physical area?  The attacker presumably has the resources to manipulate $\mathbf{H}$ directly.
+    \item The attacker must be able to access and manipulate the measurements of one or more meters.  Liu \textit{et al}. don't postulate how this would be accomplished.  If physical access to each meter is required, this would be a high-cost effort for an attacker spanning a wide area and possibly requiring multiple exploits for different types or manufacturers of meters.  Alternately, the attacker may be able to modify the measurements in transit from the meter to the control center (e.g., by compromising the SCADA network).
+\end{enumerate}
+
+\section{Subsequent Work}
+
+Following Liu \textit{et al}., other researchers developed methods to attempt to overcome the limitations listed above.
+
+To overcome the required knowledge of $\mathbf{H}$, researchers showed that an approximation can be inferred using market data or power flow measurements.  Because the inferred $\mathbf{H}$ will not equal the actual $\mathbf{H}$, equation \eqref{eqn:resid_pass} no longer holds, but researchers have demonstrated that $\mathbf{H}$ can be inferred with sufficient accuracy to avoid exceeding typical threshold values.
+
+To overcome the need to manipulate a large number of measurements, researchers developed efficient algorithms to minimize the number of non-zero elements in attack vector $\mathbf{a}$.
+
+To defend against FDI, researchers have developed improved bad data detection algorithms, algorithms to identify high-sensitivity measurements, and algorithms to compute the minimum number of compromised measurements necessary for a successful attack.  The latter two algorithms can be used by utilities to identify meters which require additional protection, redundancy, or diversity.
+
+\section{Next Steps}
+
+Possible further work within the power system FDI arena:
+\begin{enumerate}
+    \item AC power flow:  Because AC power flow uses the non-linear equations $\mathbf{h(x)} = (h_1(x_1, \ldots, x_n), \ldots, h_m(x_1, \ldots, x_n))$, constructing an attack vector using equation \eqref{eqn:attack_vector} no longer passes the bad data detection test.  Few researchers have attempted to tackle this problem.  There is some debate over whether it really matters, based on the prevalence of DC power flow calculations at utilities; however, the dominance of DC power flow is a legacy of old hardware and limited processing performance.  Full AC power flow calculations are well within current processing capabilities, and they may become more popular as data availability and processing techniques grow and utilities are looking for improved power flow calculation accuracy to improve profit margins by reducing the inherent conservative margins used to account for inaccuracy in DC power flow calculations.
+    \item Inferring system state $\mathbf{H}$:  As far as I can tell from the literature, the more effective techniques for inferring $\mathbf{H}$ from measurement information do not actually infer $\mathbf{H}$, but a separate quantity which is an inseparable combination of $\mathbf{Hx}$.  The techniques successfully use that quantity to compute attack vectors.  While this technique is effective, actually being able to calculate $\mathbf{H}$ may be desirable, either to compromise privacy or for one utility to gain a commercial advantage over another.
+    \item Systematizing the actual FDI feasibility:  FDI is  difficult to scale (though several researchers have focused on minimizing the number of compromised measurements) since it either requires directly attacking physical meters or attacking SCADA networks.  Few papers actually go into the practicalities of executing the attack (which may be why the power system community doesn't seem to care).  It may be worth getting in touch with utilities (or at least power system engineers at Cambridge or other research institutions) to identify whether FDI, as formulated, is actually feasible.  I could also perform some passive checks of engines like Shodan to see whether I can find any meters or meter networks which are open and candidates for an FDI (and then inform relevant authorities, of course...).
+\end{enumerate}
+
+The power system FDI problem may be exhausted, though.  It's at least 8 years old and the power system community doesn't seem to have picked it up.  There are new measurement techniques (phasor measurement units) and bad data detection capabilities (especially in the machine learning world) which may make FDI obsolete, even if the power system community cared about it today.
+
+There may be some opportunity to transfer the techniques to other applications which use state estimation or something analogous.
+\begin{enumerate}
+    \item Aviation/fire control:  State estimation actually originated in the aerospace engineering community.  Tracking fast things moving through the air is hard, especially if you're trying to intercept that thing.  State estimation is used to fill in the "gaps" between radar sweeps, so you can successfully track/target/lead a fast-moving airborne vehicle.  FDI may translate well into this community, especially because the main sensors (radar) are accessible in the sense that there is a line of sight between the radar and the target (presumably it's the target which is trying to manipulate the state estimation being performed with the radar's measurements).  That said, the MoD probably doesn't want to partner with me and I'm not in a great position to partner with the DoD while I'm here.
+    \item Medical devices:  I think there's a patient privacy or a patient safety problem here.  E.g., can you identify or fingerprint a patient based on medical devices around an A\&E bed which don't, in themselves, know any personally identifying information?  I would need to think more about it.
+    \item Tech provider privacy:  Research with malicious apps seem to focus on compromising the privacy or security of a user or their organization, but would it be possible to compromise, say, Apple's privacy?  What states, internal information, or behavior could be inferred about Apple, Apple's behaviors, or iDevices in general with sufficient information obtained from a widely distributed app?  This problem may also apply to ISPs or other entities in the internet infrastructure.  For example, can I learn something useful about a DNS server (other than simply it's tolerance for DDoS) by employing some kind of widely distributed botnet?  Can I learn anything about all Google's content servers that aren't on the edge of their network?
+\end{enumerate}
+
+
 
 \end{document}
